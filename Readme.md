@@ -1,3 +1,5 @@
+Warning: This library uses a non-standard bitrate of 19.2 KBPS 
+
 RFM69 for Go
 ============
 
