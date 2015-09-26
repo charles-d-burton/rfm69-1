@@ -1,14 +1,17 @@
 package rfm69
 
 import (
+	"errors"
 	"log"
+	"time"
 
 	"github.com/davecheney/gpio"
 )
 
 // Router manages sending and receiving of commands / data
 type Router struct {
-	handlers map[byte]Handle
+	handlers  map[byte]Handle
+	responses map[byte]chan Data
 
 	rfm *Device
 
@@ -127,7 +130,13 @@ func (r *Router) Run() {
 				r.tx <- data.ToAck()
 			}
 
-			if h, ok := r.handlers[data.FromAddress]; ok {
+			// check if
+			// 1. we are waiting for a response from this node
+			// 2. we have a handler for this node otherwise
+
+			if c, ok := r.responses[data.FromAddress]; ok {
+				c <- data
+			} else if h, ok := r.handlers[data.FromAddress]; ok {
 				h(data)
 			}
 		}
@@ -135,16 +144,75 @@ func (r *Router) Run() {
 }
 
 // Send data to a node
-func (r *Router) Send(nodeID byte, payload []byte, ack bool) error {
-	r.tx <- &Data{
-		ToAddress:  nodeID,
-		Data:       payload,
-		RequestAck: ack,
+func (r *Router) Send(nodeID byte, payload []byte) error {
+	_, err := r.request(nodeID, payload, false, 0, 0, false, 0)
+	return err
+}
+
+// Send data to a node with ack
+func (r *Router) SendWithAck(nodeID byte, payload []byte) error {
+	_, err := r.request(nodeID, payload, true, 3, 40, false, 0)
+	return err
+}
+
+// Send data to a node with ack and wait for response
+func (r *Router) Get(nodeID byte, payload []byte) (Data, error) {
+	return r.request(nodeID, payload, true, 3, 40, true, 3000)
+}
+
+// Internal function to send data and handle responses
+// acktime and datatime are in milliseconds
+func (r *Router) request(nodeID byte, payload []byte, ack bool, retries int, acktime uint16, getdata bool, datatime uint16) (Data, error) {
+
+	resp := make(chan Data, 1)
+
+	if r.responses == nil {
+		r.responses = make(map[byte]chan Data)
+	}
+	r.responses[nodeID] = resp
+
+	if ack {
+	loop:
+		for i := 1; i <= retries; i++ {
+			r.tx <- &Data{
+				ToAddress:  nodeID,
+				Data:       payload,
+				RequestAck: ack,
+			}
+			if ack == true {
+				select {
+				case d := <-resp:
+					if len(d.Data) > 0 {
+						return Data{}, errors.New("invalid ack")
+					}
+					break loop
+				case <-time.After(time.Millisecond * time.Duration(acktime)):
+					if i == retries {
+						return Data{}, errors.New("no ack response")
+					}
+				}
+			}
+		}
+	} else {
+		r.tx <- &Data{
+			ToAddress:  nodeID,
+			Data:       payload,
+			RequestAck: ack,
+		}
 	}
 
-	// TODO: Handle ack
+	if getdata {
+		select {
+		case d := <-resp:
+			delete(r.responses, nodeID)
+			return d, nil
+		case <-time.After(time.Millisecond * time.Duration(datatime)):
+			delete(r.responses, nodeID)
+			return Data{}, errors.New("no data response")
+		}
+	}
 
-	return nil
+	return Data{}, nil
 }
 
 func (r *Router) Close() error {
