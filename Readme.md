@@ -16,13 +16,9 @@ handler for all packets received by the RFM69 module
 
 ### Hardware
 
-Here you can find instructions on how to wire your RFM69W module to the Raspberry Pi:
+Here is how to wire the RFM69 module to the GPIO pins of your Pi2:
 
-* http://rdepablos.merlitec.com/mixed/rfm69-library-for-raspberry-pi
-
-You may also have a look at this tutorial, but it uses the RFM69CW with a different pinout:
-
-* http://jeelabs.org/2015/05/20/rfm69-on-raspberry-pi/
+![Wiring diagram](PI2-RFM69W.png)
 
 ### Usage example
 ```go
