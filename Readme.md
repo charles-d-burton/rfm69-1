@@ -12,7 +12,7 @@ handler for all packets received by the rfm69 module
 
 > Warning: This library uses a non-standard bitrate of 19.2 KBPS
 >
-> You may revert this in device.go - see commit d093a65137f74539dd07e5fc7c16b79fa1b1482a
+> You may revert this in device.go - see commit [d093a65](https://github.com/chbmuc/rfm69/commit/d093a65137f74539dd07e5fc7c16b79fa1b1482a)
 
 ### Usage example
 ```go
