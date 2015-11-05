@@ -5,7 +5,6 @@ import (
 	"log"
 
 	"github.com/davecheney/gpio"
-	"github.com/fulr/spidev"
 )
 
 const (
@@ -14,7 +13,7 @@ const (
 
 // Device RFM69 Device
 type Device struct {
-	spiDevice  *spidev.SPIDevice
+	spiDevice  *spiDevice
 	gpio       gpio.Pin
 	mode       byte
 	address    byte
@@ -36,7 +35,7 @@ func NewDevice(nodeID, networkID byte, isRfm69HW bool) (*Device, error) {
 		return nil, err
 	}
 
-	spi, err := spidev.NewSPIDevice(spiPath)
+	spi, err := newSPIDevice(spiPath)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +60,7 @@ func (r *Device) Close() error {
 	if err != nil {
 		return err
 	}
-	r.spiDevice.Close()
+	r.spiDevice.spiClose()
 	return err
 }
 
@@ -70,7 +69,7 @@ func (r *Device) writeReg(addr, data byte) error {
 	tx[0] = addr | 0x80
 	tx[1] = data
 	//log.Printf("write %x: %x", addr, data)
-	_, err := r.spiDevice.Xfer(tx)
+	_, err := r.spiDevice.spiXfer(tx)
 	if err != nil {
 		log.Println(err)
 	}
@@ -81,7 +80,7 @@ func (r *Device) readReg(addr byte) (byte, error) {
 	tx := make([]uint8, 2)
 	tx[0] = addr & 0x7f
 	tx[1] = 0
-	rx, err := r.spiDevice.Xfer(tx)
+	rx, err := r.spiDevice.spiXfer(tx)
 	if err != nil {
 		log.Println(err)
 	}
@@ -107,7 +106,7 @@ func (r *Device) setup() error {
 		///* 0x11 */ { REG_PALEVEL, RF_PALEVEL_PA0_ON | RF_PALEVEL_PA1_OFF | RF_PALEVEL_PA2_OFF | RF_PALEVEL_OUTPUTPOWER_11111},
 		///* 0x13 */ { REG_OCP, RF_OCP_ON | RF_OCP_TRIM_95 }, // over current protection (default is 95mA)
 		// RXBW defaults are { REG_RXBW, RF_RXBW_DCCFREQ_010 | RF_RXBW_MANT_24 | RF_RXBW_EXP_5} (RxBw: 10.4KHz)
-		/* 0x19 */ { REG_RXBW, RF_RXBW_DCCFREQ_010 | RF_RXBW_MANT_24 | RF_RXBW_EXP_3 },
+		/* 0x19 */ {REG_RXBW, RF_RXBW_DCCFREQ_010 | RF_RXBW_MANT_24 | RF_RXBW_EXP_3},
 		/* 0x25 */ {REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01}, // DIO0 is the only IRQ we're using
 		/* 0x26 */ {REG_DIOMAPPING2, RF_DIOMAPPING2_CLKOUT_OFF}, // DIO5 ClkOut disable for power saving
 		/* 0x28 */ {REG_IRQFLAGS2, RF_IRQFLAGS2_FIFOOVERRUN}, // writing to this bit ensures that the FIFO & status flags are reset
@@ -120,7 +119,7 @@ func (r *Device) setup() error {
 		/* 0x38 */ {REG_PAYLOADLENGTH, 66}, // in variable length mode: the max frame size, not used in TX
 		///* 0x39 */ { REG_NODEADRS, nodeID }, // turned off because we're not using address filtering
 		/* 0x3C */ {REG_FIFOTHRESH, RF_FIFOTHRESH_TXSTART_FIFONOTEMPTY | RF_FIFOTHRESH_VALUE}, // TX on FIFO not empty
-		/* 0x3D */ { REG_PACKETCONFIG2, RF_PACKET2_RXRESTARTDELAY_NONE | RF_PACKET2_AUTORXRESTART_ON | RF_PACKET2_AES_OFF }, // RXRESTARTDELAY must match transmitter PA ramp-down time (bitrate dependent)
+		/* 0x3D */ {REG_PACKETCONFIG2, RF_PACKET2_RXRESTARTDELAY_NONE | RF_PACKET2_AUTORXRESTART_ON | RF_PACKET2_AES_OFF}, // RXRESTARTDELAY must match transmitter PA ramp-down time (bitrate dependent)
 		/* 0x6F */ {REG_TESTDAGC, RF_DAGC_IMPROVED_LOWBETA0}, // run DAGC continuously in RX mode for Fading Margin Improvement, recommended default for AfcLowBetaOn=0
 	}
 	for data, err := r.readReg(REG_SYNCVALUE1); err == nil && data != 0xAA; data, err = r.readReg(REG_SYNCVALUE1) {
@@ -178,7 +177,7 @@ func (r *Device) Encrypt(key []byte) error {
 		tx := make([]byte, 17)
 		tx[0] = REG_AESKEY1 | 0x80
 		copy(tx[1:], key)
-		if _, err := r.spiDevice.Xfer(tx); err != nil {
+		if _, err := r.spiDevice.spiXfer(tx); err != nil {
 			return err
 		}
 	}
@@ -347,7 +346,7 @@ func (r *Device) writeFifo(data *Data) error {
 		tx[4] = 0x80
 	}
 	copy(tx[5:], data.Data[:buffersize])
-	_, err := r.spiDevice.Xfer(tx)
+	_, err := r.spiDevice.spiXfer(tx)
 	return err
 }
 
@@ -360,7 +359,7 @@ func (r *Device) readFifo() (Data, error) {
 	}
 	tx := new([67]byte)
 	tx[0] = REG_FIFO & 0x7f
-	rx, err := r.spiDevice.Xfer(tx[:3])
+	rx, err := r.spiDevice.spiXfer(tx[:3])
 	if err != nil {
 		return data, err
 	}
@@ -369,7 +368,7 @@ func (r *Device) readFifo() (Data, error) {
 	if length > 66 {
 		length = 66
 	}
-	rx, err = r.spiDevice.Xfer(tx[:length+3])
+	rx, err = r.spiDevice.spiXfer(tx[:length+3])
 	if err != nil {
 		return data, err
 	}
