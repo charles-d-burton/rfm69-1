@@ -57,7 +57,7 @@ func newSPIDevice(devPath string) (*spiDevice, error) {
 		return nil, err
 	}
 
-	var mode = uint8(spiMode)
+	var mode = spiMode
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCWrMode, uintptr(unsafe.Pointer(&mode)))
 	if errno != 0 {
 		err = syscall.Errno(errno)
@@ -70,7 +70,7 @@ func newSPIDevice(devPath string) (*spiDevice, error) {
 		return nil, err
 	}
 
-	var bpw uint8 = spiBits
+	var bpw = spiBits
 	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCWrBitsPerWord, uintptr(unsafe.Pointer(&bpw)))
 	if errno != 0 {
 		err = syscall.Errno(errno)
@@ -84,7 +84,7 @@ func newSPIDevice(devPath string) (*spiDevice, error) {
 	}
 	s.spiTransferData.bitsPerWord = bpw
 
-	var speed uint32 = spiSpeed
+	var speed = spiSpeed
 	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCWrMaxSpeedHz, uintptr(unsafe.Pointer(&speed)))
 	if errno != 0 {
 		err = syscall.Errno(errno)
@@ -98,7 +98,7 @@ func newSPIDevice(devPath string) (*spiDevice, error) {
 	}
 	s.spiTransferData.speedHz = speed
 
-	var delay uint16 = spiDelay
+	var delay = spiDelay
 	s.spiTransferData.delayus = delay
 
 	return s, nil

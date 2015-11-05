@@ -21,7 +21,7 @@ type Router struct {
 // Handle is a function that can be registered to handle an rfm69 message
 type Handle func(Data)
 
-// RawHandle registers a generic new event handler for a specific node
+// Handle registers a generic new event handler for a specific node
 func (r *Router) Handle(node byte, handle Handle) {
 	if r.handlers == nil {
 		r.handlers = make(map[byte]Handle)
@@ -52,6 +52,7 @@ func Init(encryptionKey string, nodeID byte, networkID byte, isRfm69Hw bool) (*R
 	return r, nil
 }
 
+// Run the rfm98 event watcher
 func (r *Router) Run() {
 	irq := make(chan int)
 	r.rfm.gpio.BeginWatch(gpio.EdgeRising, func() {
@@ -149,13 +150,13 @@ func (r *Router) Send(nodeID byte, payload []byte) error {
 	return err
 }
 
-// Send data to a node with ack
+// SendWithAck sends data to a node with ack
 func (r *Router) SendWithAck(nodeID byte, payload []byte) error {
 	_, err := r.request(nodeID, payload, true, 3, 40, false, 0)
 	return err
 }
 
-// Send data to a node with ack and wait for response
+// Get data from a node (send request with ack and wait for response)
 func (r *Router) Get(nodeID byte, payload []byte) (Data, error) {
 	return r.request(nodeID, payload, true, 3, 40, true, 3000)
 }
@@ -215,6 +216,7 @@ func (r *Router) request(nodeID byte, payload []byte, ack bool, retries int, ack
 	return Data{}, nil
 }
 
+// Close connection to the rfm69 module
 func (r *Router) Close() error {
 	return r.rfm.Close()
 }
