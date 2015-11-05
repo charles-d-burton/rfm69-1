@@ -8,11 +8,21 @@ A Go port of the Arduino library (https://github.com/LowPowerLab/RFM69) by Felix
 The Go port was done by Friedl Ulrich (https://github.com/fulr/rfm69)
 
 I forked the library to turn it into a more generic library with an event
-handler for all packets received by the rfm69 module
+handler for all packets received by the RFM69 module
 
 > Warning: This library uses a non-standard bitrate of 19.2 KBPS
 >
 > You may revert this in device.go - see commit [d093a65](https://github.com/chbmuc/rfm69/commit/d093a65137f74539dd07e5fc7c16b79fa1b1482a)
+
+### Hardware
+
+Here you can find instructions on how to wire your RFM69W module to the Raspberry Pi:
+
+* http://rdepablos.merlitec.com/mixed/rfm69-library-for-raspberry-pi
+
+You may also have a look at this tutorial, but it uses the RFM69CW with a different pinout:
+
+* http://jeelabs.org/2015/05/20/rfm69-on-raspberry-pi/
 
 ### Usage example
 ```go
