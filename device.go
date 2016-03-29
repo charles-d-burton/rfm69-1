@@ -11,6 +11,9 @@ const (
 	spiPath = "/dev/spidev0.0"
 )
 
+// OnReceiveHandler is the receive callback
+type OnReceiveHandler func(*Data)
+
 // Device RFM69 Device
 type Device struct {
 	spiDevice  *spiDevice
@@ -20,6 +23,9 @@ type Device struct {
 	network    byte
 	isRFM69HW  bool
 	powerLevel byte
+	tx         chan *Data
+	quit       chan bool
+	OnReceive  OnReceiveHandler
 }
 
 // Global settings
@@ -47,15 +53,25 @@ func NewDevice(nodeID, networkID byte, isRfm69HW bool) (*Device, error) {
 		address:    nodeID,
 		isRFM69HW:  isRfm69HW,
 		powerLevel: 31,
+		tx:         make(chan *Data),
+		quit:       make(chan bool),
 	}
 
 	err = ret.setup()
+	if err != nil {
+		return nil, err
+	}
 
-	return ret, err
+	go ret.loop()
+
+	return ret, nil
 }
 
 // Close cleans up
 func (r *Device) Close() error {
+	r.quit <- true
+	<-r.quit
+
 	err := r.gpio.Close()
 	if err != nil {
 		return err
