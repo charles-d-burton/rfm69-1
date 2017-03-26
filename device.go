@@ -383,7 +383,7 @@ func (r *Device) readFifo() (Data, error) {
 	if err != nil {
 		return data, err
 	}
-	tx := new([67]byte)
+	tx := new([70]byte)
 	tx[0] = REG_FIFO & 0x7f
 	rx, err := r.spiDevice.spiXfer(tx[:3])
 	if err != nil {
