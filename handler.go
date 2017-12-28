@@ -201,18 +201,23 @@ func (r *Router) request(nodeID byte, payload []byte, ack bool, retries int, ack
 		}
 	}
 
-	if getdata {
-		select {
-		case d := <-resp:
-			delete(r.responses, nodeID)
+	select {
+	case d := <-resp:
+		delete(r.responses, nodeID)
+		if getdata {
 			return d, nil
-		case <-time.After(time.Millisecond * time.Duration(datatime)):
-			delete(r.responses, nodeID)
+		} else {
+			return Data{}, nil
+		}
+	case <-time.After(time.Millisecond * time.Duration(datatime)):
+		delete(r.responses, nodeID)
+		if getdata {
 			return Data{}, errors.New("no data response")
+		} else {
+			return Data{}, nil
 		}
 	}
 
-	return Data{}, nil
 }
 
 // Close connection to the rfm69 module
