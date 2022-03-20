@@ -9,7 +9,7 @@ import (
 const (
 	spiMode  = uint8(0)
 	spiBits  = uint8(8)
-	spiSpeed = uint32(5000000)
+	spiSpeed = uint32(1000000)
 	spiDelay = uint16(8)
 
 	spiIOCWrMode        = 0x40016B01

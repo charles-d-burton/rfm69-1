@@ -113,9 +113,9 @@ func (r *Device) setup() error {
 		/* 0x04 */ {REG_BITRATELSB, RF_BITRATELSB_19200},
 		/* 0x05 */ {REG_FDEVMSB, RF_FDEVMSB_25000}, // default: 5KHz, (FDEV + BitRate / 2 <= 500KHz)
 		/* 0x06 */ {REG_FDEVLSB, RF_FDEVMSB_25000},
-		/* 0x07 */ {REG_FRFMSB, RF_FRFMSB_868},
-		/* 0x08 */ {REG_FRFMID, RF_FRFMID_868},
-		/* 0x09 */ {REG_FRFLSB, RF_FRFLSB_868},
+		/* 0x07 */ {REG_FRFMSB, RF_FRFMSB_915},
+		/* 0x08 */ {REG_FRFMID, RF_FRFMID_915},
+		/* 0x09 */ {REG_FRFLSB, RF_FRFLSB_915},
 		// looks like PA1 and PA2 are not implemented on RFM69W, hence the max output power is 13dBm
 		// +17dBm and +20dBm are possible on RFM69HW
 		// +13dBm formula: Pout = -18 + OutputPower (with PA0 or PA1**)
