@@ -2,33 +2,27 @@ package rfm69
 
 import (
 	"log"
-
-	"github.com/davecheney/gpio"
-	"github.com/fulr/spidev"
-)
-
-const (
-	irqPin = gpio.GPIO25
 )
 
 func main() {
 	log.Print("Start")
-
+    /*
 	pin, err := gpio.OpenPin(irqPin, gpio.ModeInput)
-	if err != nil {
-		panic(err)
-	}
-	defer pin.Close()
+		if err != nil {
+			panic(err)
+		}
+		defer pin.Close()
 
-	spiBus, err := spidev.NewSPIDevice("/dev/spidev0.0")
-	if err != nil {
-		panic(err)
-	}
-	defer spiBus.Close()
+		spiBus, err := spidev.NewSPIDevice("/dev/spidev0.0")
+		if err != nil {
+			panic(err)
+		}
+		defer spiBus.Close()
 
-	rfm, err := NewDevice(spiBus, pin, 1, 10, false)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Print(rfm)
+		rfm, err := NewDevice(spiBus, pin, 1, 10, false)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Print(rfm)
+	*/
 }

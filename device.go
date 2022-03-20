@@ -3,10 +3,13 @@ package rfm69
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
-	"github.com/davecheney/gpio"
+	"periph.io/x/conn/v3/gpio"
+	"periph.io/x/conn/v3/physic"
+	"periph.io/x/conn/v3/spi"
 )
 
 const (
@@ -18,12 +21,9 @@ type OnReceiveHandler func(*Data)
 
 // Device RFM69 Device
 type Device struct {
-	spiDevice  *spiDevice
-	gpio       gpio.Pin
+	spiDevice  spi.Conn
 	mode       byte
-	address    byte
-	network    byte
-	isRFM69HW  bool
+	Config     *RFMOptions
 	powerLevel byte
 	tx         chan *Data
 	quit       chan bool
@@ -37,23 +37,25 @@ const (
 )
 
 // NewDevice creates a new device
-func NewDevice(nodeID, networkID byte, isRfm69HW bool) (*Device, error) {
-	pin, err := getPin()
-	if err != nil {
-		return nil, err
+func NewDevice(spiPort spi.Port, options *RFMOptions) (*Device, error) {
+	if options.ResetPin == nil {
+		fmt.Printf("resetpin not set")
 	}
 
-	spi, err := newSPIDevice(spiPath)
+	if options.IrqPin != nil {
+		if err := options.IrqPin.In(gpio.PullUp, gpio.FallingEdge); err != nil {
+			return nil, err
+		}
+	}
+
+	spiDev, err := spiPort.Connect(10*physic.MegaHertz, spi.Mode0, 8)
 	if err != nil {
 		return nil, err
 	}
 
 	ret := &Device{
-		spiDevice:  spi,
-		gpio:       pin,
-		network:    networkID,
-		address:    nodeID,
-		isRFM69HW:  isRfm69HW,
+		spiDevice:  spiDev,
+		Config:     options,
 		powerLevel: 31,
 		tx:         make(chan *Data, 5),
 		quit:       make(chan bool),
@@ -71,23 +73,30 @@ func NewDevice(nodeID, networkID byte, isRfm69HW bool) (*Device, error) {
 
 // Close cleans up
 func (r *Device) Close() error {
+
 	r.quit <- true
 	<-r.quit
 
-	err := r.gpio.Close()
-	if err != nil {
-		return err
-	}
-	r.spiDevice.spiClose()
-	return err
+	return nil
+}
+
+func (r *Device) WaitForIRQ(irq chan<- bool) {
+	go func() {
+		defer close(irq)
+		for {
+			irq <- r.Config.IrqPin.WaitForEdge(100 * time.Millisecond)
+		}
+	}()
 }
 
 func (r *Device) writeReg(addr, data byte) error {
 	tx := make([]byte, 2)
 	tx[0] = addr | 0x80
 	tx[1] = data
-	//log.Printf("write %x: %x", addr, data)
-	_, err := r.spiDevice.spiXfer(tx)
+	// log.Printf("write %x: %x", addr, data)
+	length := len(tx)
+	rx := make([]byte, length)
+	err := r.spiDevice.Tx(tx, rx)
 	if err != nil {
 		log.Println(err)
 	}
@@ -98,7 +107,9 @@ func (r *Device) readReg(addr byte) (byte, error) {
 	tx := make([]uint8, 2)
 	tx[0] = addr & 0x7f
 	tx[1] = 0
-	rx, err := r.spiDevice.spiXfer(tx)
+	length := len(tx)
+	rx := make([]byte, length)
+	err := r.spiDevice.Tx(tx, rx)
 	if err != nil {
 		log.Println(err)
 	}
@@ -106,7 +117,7 @@ func (r *Device) readReg(addr byte) (byte, error) {
 }
 
 func (r *Device) setup() error {
-	config := [][]byte{
+	Config := [][]byte{
 		/* 0x01 */ {REG_OPMODE, RF_OPMODE_SEQUENCER_ON | RF_OPMODE_LISTEN_OFF | RF_OPMODE_STANDBY},
 		/* 0x02 */ {REG_DATAMODUL, RF_DATAMODUL_DATAMODE_PACKET | RF_DATAMODUL_MODULATIONTYPE_FSK | RF_DATAMODUL_MODULATIONSHAPING_00}, // no shaping
 		/* 0x03 */ {REG_BITRATEMSB, RF_BITRATEMSB_19200}, // default: 4.8 KBPS
@@ -132,7 +143,7 @@ func (r *Device) setup() error {
 		///* 0x2D */ { REG_PREAMBLELSB, RF_PREAMBLESIZE_LSB_VALUE } // default 3 preamble bytes 0xAAAAAA
 		/* 0x2E */ {REG_SYNCCONFIG, RF_SYNC_ON | RF_SYNC_FIFOFILL_AUTO | RF_SYNC_SIZE_2 | RF_SYNC_TOL_0},
 		/* 0x2F */ {REG_SYNCVALUE1, 0x2D}, // attempt to make this compatible with sync1 byte of RFM12B lib
-		/* 0x30 */ {REG_SYNCVALUE2, r.network}, // NETWORK ID
+		/* 0x30 */ {REG_SYNCVALUE2, r.Config.NetworkID}, // NETWORK ID
 		/* 0x37 */ {REG_PACKETCONFIG1, RF_PACKET1_FORMAT_VARIABLE | RF_PACKET1_DCFREE_OFF | RF_PACKET1_CRC_ON | RF_PACKET1_CRCAUTOCLEAR_ON | RF_PACKET1_ADRSFILTERING_OFF},
 		/* 0x38 */ {REG_PAYLOADLENGTH, 66}, // in variable length mode: the max frame size, not used in TX
 		///* 0x39 */ { REG_NODEADRS, nodeID }, // turned off because we're not using address filtering
@@ -152,7 +163,7 @@ func (r *Device) setup() error {
 			return err
 		}
 	}
-	for _, c := range config {
+	for _, c := range Config {
 		err := r.writeReg(c[0], c[1])
 		if err != nil {
 			return err
@@ -162,7 +173,7 @@ func (r *Device) setup() error {
 	if err != nil {
 		return err
 	}
-	err = r.setHighPower(r.isRFM69HW)
+	err = r.setHighPower(r.Config.IsRfm69HCW)
 	if err != nil {
 		return err
 	}
@@ -203,7 +214,9 @@ func (r *Device) Encrypt(key []byte) error {
 		tx := make([]byte, 17)
 		tx[0] = REG_AESKEY1 | 0x80
 		copy(tx[1:], key)
-		if _, err := r.spiDevice.spiXfer(tx); err != nil {
+		rx := make([]byte, len(tx))
+		err := r.spiDevice.Tx(tx, rx)
+		if err != nil {
 			return err
 		}
 	}
@@ -219,7 +232,7 @@ func (r *Device) SetMode(newMode byte) error {
 	if err != nil {
 		return err
 	}
-	if r.isRFM69HW && (newMode == RF_OPMODE_RECEIVER || newMode == RF_OPMODE_TRANSMITTER) {
+	if r.Config.IsRfm69HCW && (newMode == RF_OPMODE_RECEIVER || newMode == RF_OPMODE_TRANSMITTER) {
 		err := r.setHighPowerRegs(newMode == RF_OPMODE_TRANSMITTER)
 		if err != nil {
 			return err
@@ -249,16 +262,16 @@ func (r *Device) SetModeAndWait(newMode byte) error {
 }
 
 func (r *Device) setHighPower(turnOn bool) error {
-	r.isRFM69HW = turnOn
+	r.Config.IsRfm69HCW = turnOn
 	ocp := byte(RF_OCP_ON)
-	if r.isRFM69HW {
+	if r.Config.IsRfm69HCW {
 		ocp = RF_OCP_OFF
 	}
 	err := r.writeReg(REG_OCP, ocp)
 	if err != nil {
 		return err
 	}
-	if r.isRFM69HW {
+	if r.Config.IsRfm69HCW {
 		err = r.readWriteReg(REG_PALEVEL, 0x1F, RF_PALEVEL_PA1_ON|RF_PALEVEL_PA2_ON)
 	} else {
 		err = r.readWriteReg(REG_PALEVEL, 0, RF_PALEVEL_PA0_ON|RF_PALEVEL_PA1_OFF|RF_PALEVEL_PA2_OFF|r.powerLevel)
@@ -286,13 +299,13 @@ func (r *Device) setHighPowerRegs(turnOn bool) (err error) {
 
 // SetNetwork sets the network ID
 func (r *Device) SetNetwork(networkID byte) error {
-	r.network = networkID
+	r.Config.NetworkID = networkID
 	return r.writeReg(REG_SYNCVALUE2, networkID)
 }
 
 // SetAddress sets the node address
 func (r *Device) SetAddress(address byte) error {
-	r.address = address
+	r.Config.NodeID = address
 	return r.writeReg(REG_NODEADRS, address)
 }
 
@@ -364,7 +377,7 @@ func (r *Device) writeFifo(data *Data) error {
 	tx[0] = REG_FIFO | 0x80
 	tx[1] = byte(buffersize + 3)
 	tx[2] = data.ToAddress
-	tx[3] = r.address
+	tx[3] = r.Config.NodeID
 	if data.RequestAck {
 		tx[4] = 0x40
 	}
@@ -372,7 +385,8 @@ func (r *Device) writeFifo(data *Data) error {
 		tx[4] = 0x80
 	}
 	copy(tx[5:], data.Data[:buffersize])
-	_, err := r.spiDevice.spiXfer(tx)
+	rx := make([]byte, len(tx))
+	err := r.spiDevice.Tx(tx, rx)
 	return err
 }
 
@@ -385,7 +399,8 @@ func (r *Device) readFifo() (Data, error) {
 	}
 	tx := new([70]byte)
 	tx[0] = REG_FIFO & 0x7f
-	rx, err := r.spiDevice.spiXfer(tx[:3])
+	rx := make([]byte, len(tx[:3]))
+	err = r.spiDevice.Tx(tx[:3], rx)
 	if err != nil {
 		return data, err
 	}
@@ -394,7 +409,8 @@ func (r *Device) readFifo() (Data, error) {
 	if length > 66 {
 		length = 66
 	}
-	rx, err = r.spiDevice.spiXfer(tx[:length+3])
+	rx = make([]byte, len(tx[:length+3]))
+	err = r.spiDevice.Tx(tx[:length+3], rx)
 	if err != nil {
 		return data, err
 	}

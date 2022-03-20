@@ -5,15 +5,28 @@ import (
 	"log"
 	"time"
 
-	"github.com/davecheney/gpio"
+	"periph.io/x/conn/v3/gpio"
+	"periph.io/x/conn/v3/gpio/gpioreg"
+	"periph.io/x/conn/v3/spi"
+	"periph.io/x/conn/v3/spi/spireg"
 )
+
+type RFMOptions struct {
+	NodeID        byte
+	NetworkID     byte
+	IsRfm69HCW    bool
+	EncryptionKey string
+	ResetPin      gpio.PinOut
+	IrqPin        gpio.PinIn
+}
 
 // Router manages sending and receiving of commands / data
 type Router struct {
+	Port      spi.PortCloser
 	handlers  map[byte]Handle
 	responses map[byte]chan Data
 
-	rfm *Device
+	RFM *Device
 
 	tx chan *Data
 }
@@ -31,18 +44,32 @@ func (r *Router) Handle(node byte, handle Handle) {
 }
 
 // Init initializes the connection to the rfm69 module
-func Init(encryptionKey string, nodeID byte, networkID byte, isRfm69Hw bool) (*Router, error) {
+func Init(options *RFMOptions) (*Router, error) {
 	var err error
-
 	r := new(Router)
 
-	r.rfm, err = NewDevice(nodeID, networkID, isRfm69Hw)
+	// Use spireg SPI port registry to find the first available SPI bus.
+	r.Port, err = spireg.Open("")
+	if err != nil {
+		return nil, err
+	}
+
+	if options == nil {
+		options = new(RFMOptions)
+		options.IsRfm69HCW = true
+		options.NodeID = 1
+		options.NetworkID = 100
+		options.ResetPin = gpioreg.ByName("GPIO22")
+		options.IrqPin = gpioreg.ByName("GPIO25")
+	}
+
+	r.RFM, err = NewDevice(r.Port, options)
 
 	if err != nil {
 		return nil, err
 	}
 
-	err = r.rfm.Encrypt([]byte(encryptionKey))
+	err = r.RFM.Encrypt([]byte(options.EncryptionKey))
 	if err != nil {
 		return nil, err
 	}
@@ -54,90 +81,89 @@ func Init(encryptionKey string, nodeID byte, networkID byte, isRfm69Hw bool) (*R
 
 // Run the rfm98 event watcher
 func (r *Router) Run() {
-	irq := make(chan int)
-	r.rfm.gpio.BeginWatch(gpio.EdgeRising, func() {
-		irq <- 1
-	})
-	defer r.rfm.gpio.EndWatch()
+	irq := make(chan bool)
+	r.RFM.WaitForIRQ(irq)
 
-	err := r.rfm.SetMode(RF_OPMODE_RECEIVER)
+	err := r.RFM.SetMode(RF_OPMODE_RECEIVER)
 	if err != nil {
 		log.Print(err)
 		return
 	}
-	defer r.rfm.SetMode(RF_OPMODE_STANDBY)
+	defer r.RFM.SetMode(RF_OPMODE_STANDBY)
 
 	for {
 		select {
 		case dataToTransmit := <-r.tx:
 			// TODO: can send?
-			r.rfm.readWriteReg(REG_PACKETCONFIG2, 0xFB, RF_PACKET2_RXRESTART) // avoid RX deadlocks
-			err = r.rfm.SetModeAndWait(RF_OPMODE_STANDBY)
+			r.RFM.readWriteReg(REG_PACKETCONFIG2, 0xFB, RF_PACKET2_RXRESTART) // avoid RX deadlocks
+			err = r.RFM.SetModeAndWait(RF_OPMODE_STANDBY)
 			if err != nil {
 				log.Fatal(err)
 			}
-			err = r.rfm.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
+			err = r.RFM.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
 			if err != nil {
 				log.Fatal(err)
 			}
-			err = r.rfm.writeFifo(dataToTransmit)
+			err = r.RFM.writeFifo(dataToTransmit)
 			if err != nil {
 				log.Fatal(err)
 			}
-			err = r.rfm.SetMode(RF_OPMODE_TRANSMITTER)
+			err = r.RFM.SetMode(RF_OPMODE_TRANSMITTER)
 			if err != nil {
 				log.Fatal(err)
 			}
 
 			<-irq
 
-			err = r.rfm.SetModeAndWait(RF_OPMODE_STANDBY)
+			err = r.RFM.SetModeAndWait(RF_OPMODE_STANDBY)
 			if err != nil {
 				log.Fatal(err)
 			}
-			err = r.rfm.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01)
+			err = r.RFM.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01)
 			if err != nil {
 				log.Fatal(err)
 			}
-			err = r.rfm.SetMode(RF_OPMODE_RECEIVER)
+			err = r.RFM.SetMode(RF_OPMODE_RECEIVER)
 			if err != nil {
 				log.Fatal(err)
 			}
-		case <-irq:
-			if r.rfm.mode != RF_OPMODE_RECEIVER {
-				continue
-			}
-			flags, err := r.rfm.readReg(REG_IRQFLAGS2)
-			if err != nil {
-				return
-			}
-			if flags&RF_IRQFLAGS2_PAYLOADREADY == 0 {
-				continue
-			}
-			data, err := r.rfm.readFifo()
-			if err != nil {
-				log.Print(err)
-				return
-			}
-			err = r.rfm.SetMode(RF_OPMODE_RECEIVER)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if data.ToAddress != r.rfm.address {
-				break
-			}
-			if data.ToAddress != 255 && data.RequestAck {
-				r.tx <- data.ToAck()
-			}
+		case interrupt := <-irq:
+			if interrupt {
+				if r.RFM.mode != RF_OPMODE_RECEIVER {
+					continue
+				}
+				flags, err := r.RFM.readReg(REG_IRQFLAGS2)
+				if err != nil {
+					return
+				}
+				if flags&RF_IRQFLAGS2_PAYLOADREADY == 0 {
+					continue
+				}
+				data, err := r.RFM.readFifo()
+				if err != nil {
+					log.Print(err)
+					return
+				}
+				err = r.RFM.SetMode(RF_OPMODE_RECEIVER)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if data.ToAddress != r.RFM.Config.NodeID {
+					break
+				}
+				if data.ToAddress != 255 && data.RequestAck {
+					r.tx <- data.ToAck()
+				}
 
-			// check if
-			// 1. we are waiting for a response from this node
-			// 2. we have a handler for this node otherwise
+				// check if
+				// 1. we are waiting for a response from this node
+				// 2. we have a handler for this node otherwise
 
-			if c, ok := r.responses[data.FromAddress]; ok {
-				c <- data
-			} else if h, ok := r.handlers[data.FromAddress]; ok {
-				h(data)
+				if c, ok := r.responses[data.FromAddress]; ok {
+					c <- data
+				} else if h, ok := r.handlers[data.FromAddress]; ok {
+					h(data)
+				}
 			}
 		}
 	}
@@ -163,7 +189,6 @@ func (r *Router) Get(nodeID byte, payload []byte) (Data, error) {
 // Internal function to send data and handle responses
 // acktime and datatime are in milliseconds
 func (r *Router) request(nodeID byte, payload []byte, ack bool, retries int, acktime uint16, getdata bool, datatime uint16) (Data, error) {
-
 	resp := make(chan Data, 1)
 
 	if r.responses == nil {
@@ -179,7 +204,7 @@ func (r *Router) request(nodeID byte, payload []byte, ack bool, retries int, ack
 				Data:       payload,
 				RequestAck: ack,
 			}
-			if ack == true {
+			if ack{
 				select {
 				case d := <-resp:
 					if len(d.Data) > 0 {
@@ -217,10 +242,12 @@ func (r *Router) request(nodeID byte, payload []byte, ack bool, retries int, ack
 			return Data{}, nil
 		}
 	}
-
 }
 
 // Close connection to the rfm69 module
 func (r *Router) Close() error {
-	return r.rfm.Close()
+    if err := r.Port.Close(); err != nil {
+		log.Fatal(err)
+	}
+	return r.RFM.Close()
 }

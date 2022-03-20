@@ -1,12 +1,12 @@
 package rfm69
 
 import (
-	"os"
-	"syscall"
-	"unsafe"
+	"periph.io/x/periph/conn/spi"
+	"periph.io/x/periph/conn/spi/spireg"
+	"periph.io/x/periph/host"
 )
 
-const (
+/*const (
 	spiMode  = uint8(0)
 	spiBits  = uint8(8)
 	spiSpeed = uint32(1000000)
@@ -20,11 +20,11 @@ const (
 	spiIOCRdBitsPerWord = 0x80016B03
 	spiIOCRdMaxSpeedHz  = 0x80046B04
 
-	spiIOCMessage0    = 1073769216 //0x40006B00
-	spiIOCIncrementor = 2097152    //0x200000
+	spiIOCMessage0    = 1073769216 // 0x40006B00
+	spiIOCIncrementor = 2097152    // 0x200000
 )
 
-type spiIOCTransfer struct {
+/*type spiIOCTransfer struct {
 	txBuf uint64
 	rxBuf uint64
 
@@ -35,92 +35,42 @@ type spiIOCTransfer struct {
 
 	csChange uint8
 	pad      uint32
-}
+}*/
 
-func spiIOCMessageN(n uint32) uint32 {
+/*func spiIOCMessageN(n uint32) uint32 {
 	return (spiIOCMessage0 + (n * spiIOCIncrementor))
-}
+}*/
 
 // spiDevice device
-type spiDevice struct {
+/*type spiDevice struct {
 	file            *os.File
 	spiTransferData spiIOCTransfer
+}*/
+
+type spiDevice struct {
+	port spi.Port
 }
 
 // newSPIDevice opens the device
 func newSPIDevice(devPath string) (*spiDevice, error) {
-	s := new(spiDevice)
-	s.spiTransferData = spiIOCTransfer{}
 
-	var err error
-	if s.file, err = os.OpenFile(devPath, os.O_RDWR, os.ModeExclusive); err != nil {
+	var spiDev spiDevice
+	// Use spireg SPI port registry to find the first available SPI bus.
+	p, err := spireg.Open("")
+	if err != nil {
 		return nil, err
 	}
+	spiDev.port = p
 
-	var mode = spiMode
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCWrMode, uintptr(unsafe.Pointer(&mode)))
-	if errno != 0 {
-		err = syscall.Errno(errno)
-		return nil, err
-	}
-
-	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCRdMode, uintptr(unsafe.Pointer(&mode)))
-	if errno != 0 {
-		err = syscall.Errno(errno)
-		return nil, err
-	}
-
-	var bpw = spiBits
-	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCWrBitsPerWord, uintptr(unsafe.Pointer(&bpw)))
-	if errno != 0 {
-		err = syscall.Errno(errno)
-		return nil, err
-	}
-
-	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCRdBitsPerWord, uintptr(unsafe.Pointer(&bpw)))
-	if errno != 0 {
-		err = syscall.Errno(errno)
-		return nil, err
-	}
-	s.spiTransferData.bitsPerWord = bpw
-
-	var speed = spiSpeed
-	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCWrMaxSpeedHz, uintptr(unsafe.Pointer(&speed)))
-	if errno != 0 {
-		err = syscall.Errno(errno)
-		return nil, err
-	}
-
-	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), spiIOCRdMaxSpeedHz, uintptr(unsafe.Pointer(&speed)))
-	if errno != 0 {
-		err = syscall.Errno(errno)
-		return nil, err
-	}
-	s.spiTransferData.speedHz = speed
-
-	var delay = spiDelay
-	s.spiTransferData.delayus = delay
-
-	return s, nil
+	return &spiDev, nil
 }
 
-func (s *spiDevice) spiXfer(tx []byte) ([]byte, error) {
-	length := len(tx)
-	rx := make([]byte, length)
-
-	dataCarrier := s.spiTransferData
-	dataCarrier.length = uint32(length)
-	dataCarrier.txBuf = uint64(uintptr(unsafe.Pointer(&tx[0])))
-	dataCarrier.rxBuf = uint64(uintptr(unsafe.Pointer(&rx[0])))
-
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, s.file.Fd(), uintptr(spiIOCMessageN(1)), uintptr(unsafe.Pointer(&dataCarrier)))
-	if errno != 0 {
-		err := syscall.Errno(errno)
-		return nil, err
-	}
-	return rx, nil
+// Not yet implemented
+func (s *spiDevice) Close() {
+	// s.port.Close()
+	// s.spi.Close()
 }
 
-func (s *spiDevice) spiClose() {
+/*func (s *spiDevice) spiClose() {
 	s.file.Close()
-}
+}*/
