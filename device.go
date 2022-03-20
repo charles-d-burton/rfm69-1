@@ -95,7 +95,7 @@ func (r *Device) writeReg(addr, data byte) error {
 	tx := make([]byte, 2)
 	tx[0] = addr | 0x80
 	tx[1] = data
-	// log.Printf("write %x: %x", addr, data)
+	fmt.Printf("write %x: %x\n", addr, data)
 	length := len(tx)
 	rx := make([]byte, length)
 	err := r.spiDevice.Tx(tx, rx)
@@ -126,7 +126,7 @@ func (r *Device) setup() error {
 		/* 0x03 */ {REG_BITRATEMSB, RF_BITRATEMSB_19200}, // default: 4.8 KBPS
 		/* 0x04 */ {REG_BITRATELSB, RF_BITRATELSB_19200},
 		/* 0x05 */ {REG_FDEVMSB, RF_FDEVMSB_25000}, // default: 5KHz, (FDEV + BitRate / 2 <= 500KHz)
-		/* 0x06 */ {REG_FDEVLSB, RF_FDEVMSB_25000},
+		/* 0x06 */ {REG_FDEVLSB, RF_FDEVLSB_25000},
 		/* 0x07 */ {REG_FRFMSB, RF_FRFMSB_915},
 		/* 0x08 */ {REG_FRFMID, RF_FRFMID_915},
 		/* 0x09 */ {REG_FRFLSB, RF_FRFLSB_915},
