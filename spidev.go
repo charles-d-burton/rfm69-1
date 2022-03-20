@@ -3,7 +3,6 @@ package rfm69
 import (
 	"periph.io/x/periph/conn/spi"
 	"periph.io/x/periph/conn/spi/spireg"
-	"periph.io/x/periph/host"
 )
 
 /*const (
@@ -53,7 +52,6 @@ type spiDevice struct {
 
 // newSPIDevice opens the device
 func newSPIDevice(devPath string) (*spiDevice, error) {
-
 	var spiDev spiDevice
 	// Use spireg SPI port registry to find the first available SPI bus.
 	p, err := spireg.Open("")
