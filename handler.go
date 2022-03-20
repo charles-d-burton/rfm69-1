@@ -2,6 +2,7 @@ package rfm69
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -50,6 +51,7 @@ func Init(options *RFMOptions) (*Router, error) {
 
 	// Use spireg SPI port registry to find the first available SPI bus.
 	r.Port, err = spireg.Open("")
+	fmt.Println("spi port open")
 	if err != nil {
 		return nil, err
 	}
@@ -63,6 +65,7 @@ func Init(options *RFMOptions) (*Router, error) {
 		options.IrqPin = gpioreg.ByName("GPIO25")
 	}
 
+	fmt.Println("setting up device")
 	r.RFM, err = NewDevice(r.Port, options)
 
 	if err != nil {
@@ -204,7 +207,7 @@ func (r *Router) request(nodeID byte, payload []byte, ack bool, retries int, ack
 				Data:       payload,
 				RequestAck: ack,
 			}
-			if ack{
+			if ack {
 				select {
 				case d := <-resp:
 					if len(d.Data) > 0 {
@@ -246,7 +249,7 @@ func (r *Router) request(nodeID byte, payload []byte, ack bool, retries int, ack
 
 // Close connection to the rfm69 module
 func (r *Router) Close() error {
-    if err := r.Port.Close(); err != nil {
+	if err := r.Port.Close(); err != nil {
 		log.Fatal(err)
 	}
 	return r.RFM.Close()
