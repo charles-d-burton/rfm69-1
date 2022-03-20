@@ -43,11 +43,13 @@ func NewDevice(spiPort spi.Port, options *RFMOptions) (*Device, error) {
 	}
 
 	if options.IrqPin != nil {
+        fmt.Println("pulling up IRQ")
 		if err := options.IrqPin.In(gpio.PullUp, gpio.FallingEdge); err != nil {
 			return nil, err
 		}
 	}
 
+    fmt.Println("connecting to SPI interface")
 	spiDev, err := spiPort.Connect(10*physic.MegaHertz, spi.Mode0, 8)
 	if err != nil {
 		return nil, err
@@ -117,6 +119,7 @@ func (r *Device) readReg(addr byte) (byte, error) {
 }
 
 func (r *Device) setup() error {
+    fmt.Println("running initialization")
 	Config := [][]byte{
 		/* 0x01 */ {REG_OPMODE, RF_OPMODE_SEQUENCER_ON | RF_OPMODE_LISTEN_OFF | RF_OPMODE_STANDBY},
 		/* 0x02 */ {REG_DATAMODUL, RF_DATAMODUL_DATAMODE_PACKET | RF_DATAMODUL_MODULATIONTYPE_FSK | RF_DATAMODUL_MODULATIONSHAPING_00}, // no shaping
