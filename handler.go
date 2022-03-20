@@ -72,6 +72,7 @@ func Init(options *RFMOptions) (*Router, error) {
 		return nil, err
 	}
 
+    fmt.Println("setting encryption key")
 	err = r.RFM.Encrypt([]byte(options.EncryptionKey))
 	if err != nil {
 		return nil, err
