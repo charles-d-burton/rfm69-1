@@ -154,12 +154,14 @@ func (r *Device) setup() error {
 		/* 0x3D */ {REG_PACKETCONFIG2, RF_PACKET2_RXRESTARTDELAY_NONE | RF_PACKET2_AUTORXRESTART_ON | RF_PACKET2_AES_OFF}, // RXRESTARTDELAY must match transmitter PA ramp-down time (bitrate dependent)
 		/* 0x6F */ {REG_TESTDAGC, RF_DAGC_IMPROVED_LOWBETA0}, // run DAGC continuously in RX mode for Fading Margin Improvement, recommended default for AfcLowBetaOn=0
 	}
+    fmt.Println("writing first sync value")
 	for data, err := r.readReg(REG_SYNCVALUE1); err == nil && data != 0xAA; data, err = r.readReg(REG_SYNCVALUE1) {
 		err := r.writeReg(REG_SYNCVALUE1, 0xAA)
 		if err != nil {
 			return err
 		}
 	}
+    fmt.Println("writing second sync value")
 	for data, err := r.readReg(REG_SYNCVALUE1); err == nil && data != 0x55; data, err = r.readReg(REG_SYNCVALUE1) {
 		r.writeReg(REG_SYNCVALUE1, 0x55)
 		if err != nil {
